@@ -474,6 +474,8 @@ wins %>% group_by(team) %>% summarise("W" = sum(total_wins), "L" = sum(total_los
 
 wins.by.team %>% mutate("Playoff GP" = W + L) -> playoff.wins.by.team
 
+#Create and Compile Ratios
+
 batting.against.rates.per.PA %>% inner_join(batting.for.rates.per.PA, by = c("Tm"="Tm")) -> batting.rates
 batting.rates %>% inner_join(playoff.wins.by.team, by = c("Tm"="team")) -> rates.playoffs
 rates.playoffs %>% mutate("Playoff Win Pct" = W / (W + L), "HR per PA Ratio" = HR.per.pa.for / HR.per.pa.against, "Singles per PA Ratio" = x1B.per.pa.for / x1B.per.pa.against, "Unintentional BB per PA Ratio" = UBB.per.pa.for / UBB.per.pa.against, "SO per PA Ratio" = SO.per.pa.for / SO.per.pa.against, OPS.ratio = OPS.for / OPS.against) %>% select(Tm, "Playoff Win Pct", "HR per PA Ratio", "Singles per PA Ratio", "Unintentional BB per PA Ratio", "SO per PA Ratio", OPS.ratio, "Playoff GP") -> rates.ratios.playoffs
@@ -673,6 +675,7 @@ print(resid.plot.OPS.ratio)
 ```
 
 ```{r}
+# Playoff Run Differential vs Winning Percentage
 playoff_runs <- read_csv("data/Runs_Playoffs_RFinal.csv")
 
 playoff_runs$RD <- with(playoff_runs, R - RA)
