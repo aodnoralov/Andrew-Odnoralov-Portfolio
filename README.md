@@ -1,6 +1,6 @@
 # Andrew Odnoralov Portfolio of Code and Visualizations
 
-Welcome to my Portfolio! To view Visualizations, click the link below, select a visualization, and either view it in full-screen mode or download it.   
+Welcome to my Portfolio! To view Visualizations, click the link below, select a visualization, and either view it in full-screen mode or download it. The full-screen icon is located at the bottom-right corner.   
 Link to Tableau Visualizations:
 https://public.tableau.com/app/profile/andrew.odnoralov/vizzes
 
