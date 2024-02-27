@@ -4,8 +4,8 @@ Welcome to my Portfolio! To view Visualizations, click the link below, select a 
 Link to Tableau Visualizations:
 https://public.tableau.com/app/profile/andrew.odnoralov/vizzes
 
+Attached is also a PowerPoint containing additional visualizations related to cricket. 
+
 For those interested in graphic design, here is an Adobe Spark Page that I made about Aaron Hicks: https://express.adobe.com/page/dh2LjkXyZCcUJ/
 
 For R code, see the .Rmd file.
-
-Attached is also a PowerPoint containing additional visualizations related to cricket. 
