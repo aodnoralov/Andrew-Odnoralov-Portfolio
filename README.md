@@ -4,8 +4,13 @@ Welcome to my Portfolio! To view Visualizations, click the link below, select a 
 Link to Tableau Visualizations:
 https://public.tableau.com/app/profile/andrew.odnoralov/vizzes
 
+For R Project of MLB Stat Ratios vs Playoff Win Percentage, see the .Rmd file.
+
+For Python Project of chosen NBA Metrics vs 2023 Offseason UFA Contracts (AAV as Salary Cap Percentage), click this link:
+https://github.com/aodnoralov/NBA-Salary-Indicators 
+
 Attached is also a PowerPoint containing additional visualizations related to cricket. 
 
 For those interested in graphic design, here is an Adobe Spark Page that I made about Aaron Hicks: https://express.adobe.com/page/dh2LjkXyZCcUJ/
 
-For R code, see the .Rmd file.
+
