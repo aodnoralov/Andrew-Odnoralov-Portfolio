@@ -11,6 +11,4 @@ https://github.com/aodnoralov/NBA-Salary-Indicators
 
 Attached is also a PowerPoint containing additional visualizations related to cricket. 
 
-For those interested in graphic design, here is an Adobe Spark Page that I made about Aaron Hicks: https://express.adobe.com/page/dh2LjkXyZCcUJ/
-
 
