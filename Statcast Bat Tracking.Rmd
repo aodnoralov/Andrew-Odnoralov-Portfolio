@@ -1,0 +1,496 @@
+---
+title: "Statcast Bat Tracking Project"
+output: html_document
+---
+
+```{r}
+#How do swing characteristics change under various conditions 
+#libraries
+library(tidyverse)
+library(baseballr)
+library(Lahman)
+library(ggplot2)
+library(fastDummies)
+library(car)
+library(lmtest)
+library(sandwich)
+library(ggrepel)
+library(BasketballAnalyzeR)
+```
+
+```{r}
+# 
+# #scrape 2024 season
+# season <- 2024
+# season.table <- tibble()
+# days <- seq(from=as.Date(paste0(season,"-03-27")), to=as.Date(paste0(season,"-09-30")), by='2 days')
+# for(i in seq_along(days)){
+#   print(paste(days[i], "to", days[i]+1))
+#   current.period <- scrape_statcast_savant(start_date=days[i], end_date=days[i]+1, player_type="batter") #scrape every 2 days 
+#   current.period$outs_when_up <- as.numeric(current.period$outs_when_up) #ensure data type consistency
+#   current.period$game_type <- ifelse(current.period$game_type==FALSE, "", current.period$game_type)
+#   current.period$inning <- as.integer(current.period$inning)
+#   current.period$pitch_number <- as.integer(current.period$pitch_number)
+#   current.period$break_angle_deprecated <- as.logical(current.period$break_angle_deprecated)
+#   current.period$break_length_deprecated <- as.logical(current.period$break_length_deprecated)
+#   current.period$game_year <- as.integer(current.period$game_year)
+#   if(nrow(current.period)==0){
+#     next
+#   } #skip days without games (all star break/day before playoffs)
+#   season.table %>% bind_rows(current.period) -> season.table
+# }
+# 
+# #write to csv so only need to scrape once
+# season.table %>% arrange(game_date) %>% write_csv(paste0("statcast",season,".csv"))
+
+```
+
+```{r}
+#get player names
+statcast.2024 <- read_csv("statcast2024.csv")
+mlb.id.map <- chadwick_player_lu()
+```
+
+```{r}
+statcast.id <- mlb.id.map %>% select(key_mlbam, name_first, name_last) %>% transmute(key_mlbam=key_mlbam, name=paste(name_first, name_last))
+```
+
+
+```{r}
+#create dummies/conditions
+swing.pxp.data.2024 <- statcast.2024 %>% filter(!is.na(bat_speed) & !is.na(swing_length)) %>% mutate(`fast_swing?`=ifelse(bat_speed>=75,1,0), count=paste0(balls,"-",strikes), `two_strikes?`=ifelse(strikes==2,1,0), `hitters_count?`=ifelse(balls>strikes & strikes!=2,1,0), `chase?`=ifelse(plate_z<=sz_top & plate_z>=sz_bot & plate_x>=-0.83 & plate_x<=0.83,0,1), `barrel?`=ifelse(launch_speed_angle==6,1,0), `weak?`=ifelse(launch_speed_angle==1,1,0), `hard_hit?`=ifelse(launch_speed>=95,1,0), `sweet_spot?`=ifelse(launch_angle>=8 & launch_angle<=32,1,0), `shade?`=ifelse(if_fielding_alignment=="Infield shade",1,0), `sac_fly_opp?`=ifelse(!is.na(on_3b) & outs_when_up<2,1,0), `heart?`=ifelse(plate_z<=((sz_top-sz_bot)*(5/6))+sz_bot & plate_z>=((sz_top-sz_bot)/6)+sz_bot & plate_x>=-0.558 & plate_x<=0.558,1,0), `righty_batter?`=ifelse(stand=="R",1,0), `righty_pitcher?`=ifelse(p_throws=="R",1,0), swing_length=swing_length*12) %>% inner_join(statcast.id, by=c("pitcher"="key_mlbam")) %>% rename(pitcher_name=name) %>% inner_join(statcast.id, by=c("batter"="key_mlbam")) %>% rename(batter_name=name) %>% dummy_cols(select_columns=c("home_team","pitch_name","count"))
+```
+
+```{r}
+#For all models adjust for heteroskedasticty when necessary and avoid multicollinearity
+#faster swings are usually longer, swings are slower when players chase and two strikes, faster swingers shifted more, lefties have faster bat speed, possible speed increase at high altitude (stadium values depend on home team), faster swings in the heart of the plate, slower swings on breaking and offspeed
+options(scipen=8)
+bat.speed.model.1 <- lm(bat_speed ~ swing_length+release_speed+release_spin_rate+release_extension+pitch_number+spin_axis+`two_strikes?`+`hitters_count?`+`chase?`+`shade?`+`sac_fly_opp?`+`heart?`+`righty_batter?`+`righty_pitcher?`+`home_team_ATL`+`home_team_AZ`+`home_team_BAL`+`home_team_BOS`+`home_team_CHC`+`home_team_CIN`+`home_team_CLE`+`home_team_CWS`+`home_team_DET`+`home_team_HOU`+`home_team_KC`+`home_team_LAA`+`home_team_LAD`+`home_team_MIA`+`home_team_MIL`+`home_team_MIN`+`home_team_NYM`+`home_team_NYY`+`home_team_OAK`+`home_team_PHI`+`home_team_PIT`+`home_team_SD`+`home_team_SEA`+`home_team_SF`+`home_team_STL`+`home_team_TB`+`home_team_TEX`+`home_team_TOR`+`home_team_WSH`+`pitch_name_Changeup`+`pitch_name_Curveball`+`pitch_name_Knuckle Curve`+`pitch_name_Cutter`+`pitch_name_Eephus`+`pitch_name_Forkball`+`pitch_name_Knuckleball`+`pitch_name_Other`+`pitch_name_Screwball`+`pitch_name_Sinker`+`pitch_name_Slider`+`pitch_name_Slow Curve`+`pitch_name_Slurve`+`pitch_name_Split-Finger`+`pitch_name_Sweeper`, data=swing.pxp.data.2024)
+
+car::vif(bat.speed.model.1)
+bptest(bat.speed.model.1)
+coeftest(bat.speed.model.1, vcov=hccm)
+```
+
+```{r}
+#swings longer in hitters counts and when players chase, players shorten up with two strikes, longer swings for shaded players, shorter swings in heart of plate and runner on 3rd less than 2 outs, righties have shorter swings, longer swings on breaking, longest on offspeed, coors one of the shorter swings 
+swing.length.model.1 <- lm(swing_length ~ `fast_swing?`+release_speed+release_spin_rate+release_extension+pitch_number+spin_axis+`two_strikes?`+`hitters_count?`+`chase?`+`shade?`+`sac_fly_opp?`+`heart?`+`righty_batter?`+`righty_pitcher?`+`home_team_ATL`+`home_team_AZ`+`home_team_BAL`+`home_team_BOS`+`home_team_CHC`+`home_team_CIN`+`home_team_CLE`+`home_team_CWS`+`home_team_DET`+`home_team_HOU`+`home_team_KC`+`home_team_LAA`+`home_team_LAD`+`home_team_MIA`+`home_team_MIL`+`home_team_MIN`+`home_team_NYM`+`home_team_NYY`+`home_team_OAK`+`home_team_PHI`+`home_team_PIT`+`home_team_SD`+`home_team_SEA`+`home_team_SF`+`home_team_STL`+`home_team_TB`+`home_team_TEX`+`home_team_TOR`+`home_team_WSH`+`pitch_name_Changeup`+`pitch_name_Curveball`+`pitch_name_Knuckle Curve`+`pitch_name_Cutter`+`pitch_name_Eephus`+`pitch_name_Forkball`+`pitch_name_Knuckleball`+`pitch_name_Other`+`pitch_name_Screwball`+`pitch_name_Sinker`+`pitch_name_Slider`+`pitch_name_Slow Curve`+`pitch_name_Slurve`+`pitch_name_Split-Finger`+`pitch_name_Sweeper`, data=swing.pxp.data.2024)
+
+car::vif(swing.length.model.1)
+bptest(swing.length.model.1)
+coeftest(swing.length.model.1, vcov=hccm)
+```
+
+```{r}
+#faster swings for hitters counts
+bat.speed.model.2 <- lm(bat_speed ~ `count_0-1`+`count_0-2`+`count_1-0`+`count_1-1`+`count_1-2`+`count_2-0`+`count_2-1`+`count_2-2`+`count_3-0`+`count_3-1`+`count_3-2`, data=swing.pxp.data.2024)
+car::vif(bat.speed.model.2)
+bptest(bat.speed.model.2)
+coeftest(bat.speed.model.2, vcov=hccm)
+```
+
+```{r}
+#longer for hitters counts
+swing.length.model.2 <- lm(swing_length ~ `count_0-1`+`count_0-2`+`count_1-0`+`count_1-1`+`count_1-2`+`count_2-0`+`count_2-1`+`count_2-2`+`count_3-0`+`count_3-1`+`count_3-2`, data=swing.pxp.data.2024)
+car::vif(swing.length.model.2)
+bptest(swing.length.model.2)
+coeftest(swing.length.model.2, vcov=hccm)
+```
+
+```{r}
+#slow swings can sell out for good launch angle or exit velo but fast swings needed for both (barrels)
+in.play.swing.pxp.data.2024 <- subset(swing.pxp.data.2024, !is.na(launch_speed) & !is.na(launch_angle) & !is.na(`barrel?`) & !is.na(`sweet_spot?`) & !is.na(`hard_hit?`))
+
+bat.speed.model.3 <- lm(bat_speed ~ launch_speed+launch_angle+`barrel?`+`sweet_spot?`+`hard_hit?`, data=in.play.swing.pxp.data.2024)
+car::vif(bat.speed.model.3)
+bptest(bat.speed.model.3)
+coeftest(bat.speed.model.3, vcov=hccm)
+```
+
+```{r}
+#same with long swings
+swing.length.model.3 <- lm(swing_length ~ launch_speed+launch_angle+`barrel?`+`sweet_spot?`+`hard_hit?`, data=in.play.swing.pxp.data.2024)
+car::vif(swing.length.model.3)
+bptest(swing.length.model.3)
+coeftest(swing.length.model.3, vcov=hccm)
+```
+
+```{r}
+#fast for the offspeed, slow for breaking, mid for fastballs - long for offspeed, short for fastball, mid for breaking
+pitch.type.swing.metrics <- swing.pxp.data.2024 %>% select(`pitch_name`, `bat_speed`, `swing_length`) %>% group_by(`pitch_name`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+
+#same as before
+count.swing.metrics <- swing.pxp.data.2024 %>% select(`count`, `bat_speed`, `swing_length`) %>% group_by(`count`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+
+#righties have long swings but close in atlanta, longer swings in hr friendly stadiums
+home.stadium.swing.metrics <- swing.pxp.data.2024 %>% select(`home_team`, `bat_speed`, `swing_length`) %>% group_by(`home_team`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+home.stadium.platoon.swing.metrics <- swing.pxp.data.2024 %>% select(`home_team`,`stand`,`bat_speed`, `swing_length`) %>% group_by(`home_team`,`stand`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+
+#slower when chase, faster when low in zone, longer swing at low pitches, shorter at high
+zone.swing.metrics <- swing.pxp.data.2024 %>% select(`zone`, `bat_speed`, `swing_length`) %>% group_by(`zone`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`)) 
+
+#doesnt matter
+pitcher.hand.metrics <- swing.pxp.data.2024 %>% select(`p_throws`, `bat_speed`, `swing_length`) %>% group_by(`p_throws`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`)) 
+
+#slower longer swings when chase
+chase.metrics <- swing.pxp.data.2024 %>% select(`chase?`, `bat_speed`, `swing_length`) %>% group_by(`chase?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+
+#faster and shorter in heart
+heart.metrics <- swing.pxp.data.2024 %>% select(`heart?`, `bat_speed`, `swing_length`) %>% group_by(`heart?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+
+#very slightly faster when shade
+shade.metrics <- swing.pxp.data.2024 %>% select(`shade?`, `bat_speed`, `swing_length`) %>% group_by(`shade?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+
+#very slightly slower and shorter swing in sac fly opps
+SF.metrics <- swing.pxp.data.2024 %>% select(`sac_fly_opp?`, `bat_speed`, `swing_length`) %>% group_by(`sac_fly_opp?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+```
+
+```{r}
+#hard hit and barrel as expected but launch angle surprising
+sweet.spot.metrics <- in.play.swing.pxp.data.2024 %>% select(`sweet_spot?`, `bat_speed`, `swing_length`) %>% group_by(`sweet_spot?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+
+hard.hit.metrics <- in.play.swing.pxp.data.2024 %>% select(`hard_hit?`, `bat_speed`, `swing_length`) %>% group_by(`hard_hit?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+
+barrel.metrics <- in.play.swing.pxp.data.2024 %>% select(`barrel?`, `bat_speed`, `swing_length`) %>% group_by(`barrel?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+```
+
+```{r}
+#to make contact with 2 strikes, increase bat speed and decrease length - for just spoiling bat speed still faster but less so and swing length even shorter
+two.strikes.swing.pxp.data.2024 <- swing.pxp.data.2024 %>% filter(strikes==2) %>% filter(!grepl("bunt", description)) %>% mutate(`swing_and_miss?`=ifelse(grepl("swinging_strike", description),1,0))
+
+two.strike.contact.metrics <- two.strikes.swing.pxp.data.2024 %>% select(`swing_and_miss?`, `bat_speed`, `swing_length`) %>% group_by(`swing_and_miss?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`)) 
+
+two.strike.spoil.metrics <- two.strikes.swing.pxp.data.2024 %>% filter(description!="hit_into_play") %>% select(`swing_and_miss?`, `bat_speed`, `swing_length`) %>% group_by(`swing_and_miss?`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`))
+```
+
+
+
+
+```{r}
+batter.by.pitch.metrics <- swing.pxp.data.2024 %>% select(`batter_name`, `bat_speed`, `pitch_name`) %>% group_by(`batter_name`) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), fastball_pct=sum(pitch_name=="4-Seam Fastball")/n*100, changeup_pct=sum(pitch_name=="Changeup")/n*100,  curveball_pct=sum(pitch_name=="Curveball")/n*100, cutter_pct=sum(pitch_name=="Cutter")/n*100, kcurve_pct=sum(pitch_name=="Knuckle Curve")/n*100, sinker_pct=sum(pitch_name=="Sinker")/n*100, slider_pct=sum(pitch_name=="Slider")/n*100, splitter_pct=sum(pitch_name=="Split-Finger")/n*100, sweeper_pct=sum(pitch_name=="Sweeper")/n*100) %>% filter(n>=500)
+```
+
+```{r}
+#bat speed vs pitch type usage for batters
+batter.fourseam.plot <- ggplot(batter.by.pitch.metrics, aes(x = `fastball_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("4 seam Usage Against (mph)") +
+  ylab("Avg Bat Speed (mph)") +
+  ggtitle("4 seam Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 20), show.legend = F)
+batter.fourseam.plot
+
+batter.changeup.plot <- ggplot(batter.by.pitch.metrics, aes(x = `changeup_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("changeup Usage Against (mph)") +
+  ylab("Avg Bat Speed (mph)") +
+  ggtitle("changeup Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 40), show.legend = F)
+batter.changeup.plot
+
+batter.cutter.plot <- ggplot(batter.by.pitch.metrics, aes(x = `cutter_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("cutter Usage Against (mph)") +
+  ylab("Avg Bat Speed (mph)") +
+  ggtitle("cutter Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 40), show.legend = F)
+batter.cutter.plot
+
+batter.sinker.plot <- ggplot(batter.by.pitch.metrics, aes(x = `sinker_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("sinker Usage Against (mph)") +
+  ylab("Avg Bat Speed (mph)") +
+  ggtitle("sinker Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 40), show.legend = F)
+batter.sinker.plot
+
+batter.curveball.plot <- ggplot(batter.by.pitch.metrics, aes(x = `curveball_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("curveball Usage Against (mph)") +
+  ylab("Avg Bat Speed (mph)") +
+  ggtitle("curveball Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 40), show.legend = F)
+batter.curveball.plot
+
+batter.kc.plot <- ggplot(batter.by.pitch.metrics, aes(x = `kcurve_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("knuckle curve Usage Against (mph)") +
+  ylab("Avg Bat Speed (mph)") +
+  ggtitle("knuckle curve Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 40), show.legend = F)
+batter.kc.plot
+
+batter.slider.plot <- ggplot(batter.by.pitch.metrics, aes(x = `slider_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("slider Usage Against (mph)") +
+  ylab("Avg Bat Speed (mph)") +
+  ggtitle("slider Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 40), show.legend = F)
+batter.slider.plot
+
+batter.sweeper.plot <- ggplot(batter.by.pitch.metrics, aes(x = `sweeper_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("sweeper Usage Against (mph)") +
+  ylab("Avg Bat Speed (in)") +
+  ggtitle("sweeper Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 40), show.legend = F)
+batter.sweeper.plot
+
+batter.splitter.plot <- ggplot(batter.by.pitch.metrics, aes(x = `splitter_pct` , y = `avg_bat_speed`)) +
+  geom_point(alpha = .5, color = "#f6602d", aes(size = n)) +
+  xlab("splitter Usage Against (mph)") +
+  ylab("Avg Bat Speed (mph)") +
+  ggtitle("splitter Usage Against vs Bat Speed") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(batter_name), cex = 40), show.legend = F)
+batter.splitter.plot
+```
+
+
+
+```{r}
+pitcher.by.swing.metrics <- swing.pxp.data.2024 %>% select(`pitcher_name`, `bat_speed`, `swing_length`, `pitch_name`, `release_speed`, `release_spin_rate`, `release_extension`) %>% group_by(`pitcher_name`, pitch_name) %>% summarise(n=n(), `avg_bat_speed`=mean(`bat_speed`), `avg_swing_length`=mean(`swing_length`), avg_spin_rate=mean(`release_spin_rate`), avg_velo=mean(`release_speed`), avg_extension=mean(`release_extension`)) %>% filter(n>=100)
+
+pitcher.fourseam <- pitcher.by.swing.metrics %>% filter(pitch_name=="4-Seam Fastball")
+pitcher.changeup <- pitcher.by.swing.metrics %>% filter(pitch_name=="Changeup")
+pitcher.cutter <- pitcher.by.swing.metrics %>% filter(pitch_name=="Cutter")
+pitcher.sinker <- pitcher.by.swing.metrics %>% filter(pitch_name=="Sinker")
+pitcher.curveball <- pitcher.by.swing.metrics %>% filter(pitch_name=="Curveball")
+pitcher.kc <- pitcher.by.swing.metrics %>% filter(pitch_name=="Knuckle Curve")
+pitcher.slider <- pitcher.by.swing.metrics %>% filter(pitch_name=="Slider")
+pitcher.sweeper <- pitcher.by.swing.metrics %>% filter(pitch_name=="Sweeper")
+pitcher.splitter <- pitcher.by.swing.metrics %>% filter(pitch_name=="Split-Finger")
+```
+
+```{r}
+#velo vs swing length for pitch types
+pitcher.fourseam.plot <- ggplot(pitcher.fourseam, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("4 seam Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("4 seam Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 20), show.legend = F)
+pitcher.fourseam.plot
+
+pitcher.changeup.plot <- ggplot(pitcher.changeup, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("changeup Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("changeup Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.changeup.plot
+
+pitcher.cutter.plot <- ggplot(pitcher.cutter, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("cutter Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("cutter Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.cutter.plot
+
+pitcher.sinker.plot <- ggplot(pitcher.sinker, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("sinker Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("sinker Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.sinker.plot
+
+pitcher.curveball.plot <- ggplot(pitcher.curveball, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("curveball Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("curveball Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.curveball.plot
+
+pitcher.kc.plot <- ggplot(pitcher.kc, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("knuckle curve Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("knuckle curve Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.kc.plot
+
+pitcher.slider.plot <- ggplot(pitcher.slider, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("slider Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("slider Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.slider.plot
+
+pitcher.sweeper.plot <- ggplot(pitcher.sweeper, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("sweeper Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("sweeper Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.sweeper.plot
+
+pitcher.splitter.plot <- ggplot(pitcher.splitter, aes(x = `avg_velo` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "deeppink2", aes(size = n)) +
+  xlab("splitter Velo (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("splitter Velo vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.splitter.plot
+```
+
+```{r}
+# spin rate vs swing lengths for pitch type
+pitcher.fourseam.plot.spin <- ggplot(pitcher.fourseam, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("4 seam Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("4 seam Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 20), show.legend = F)
+pitcher.fourseam.plot.spin
+
+pitcher.changeup.plot.spin <- ggplot(pitcher.changeup, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("changeup Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("changeup Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.changeup.plot.spin
+
+pitcher.cutter.plot.spin <- ggplot(pitcher.cutter, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("cutter Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("cutter Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.cutter.plot.spin
+
+pitcher.sinker.plot.spin <- ggplot(pitcher.sinker, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("sinker Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("sinker Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.sinker.plot.spin
+
+pitcher.curveball.plot.spin <- ggplot(pitcher.curveball, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("curveball Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("curveball Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.curveball.plot.spin
+
+pitcher.kc.plot.spin <- ggplot(pitcher.kc, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("knuckle curve Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("knuckle curve Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.kc.plot.spin
+
+pitcher.slider.plot.spin <- ggplot(pitcher.slider, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("slider Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("slider Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.slider.plot.spin
+
+pitcher.sweeper.plot.spin <- ggplot(pitcher.sweeper, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("sweeper Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("sweeper Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.sweeper.plot.spin
+
+pitcher.splitter.plot.spin <- ggplot(pitcher.splitter, aes(x = `avg_spin_rate` , y = `avg_swing_length`)) +
+  geom_point(alpha = .5, color = "magenta", aes(size = n)) +
+  xlab("splitter Spin (mph)") +
+  ylab("Avg Swing Length (in)") +
+  ggtitle("splitter Spin vs Swing Length") +
+  geom_smooth(method = "lm", se = FALSE, color = "cornflowerblue") +
+  geom_text_repel(color = "black",
+                  aes(label = paste(pitcher_name), cex = 40), show.legend = F)
+pitcher.splitter.plot.spin
+```
+
+
+
+
+
+
+```{r}
+player.metrics.2024 <- read_csv("playerbattrackingandstats2024.csv") %>% filter(pa>=500) %>% mutate(hr_per_pa_pct=home_run/pa*100, fastball_pct=pitch_count_fastball/(pitch_count_fastball+pitch_count_offspeed+pitch_count_breaking)*100, offspeed_pct=pitch_count_offspeed/(pitch_count_fastball+pitch_count_offspeed+pitch_count_breaking)*100, breaking_pct=pitch_count_breaking/(pitch_count_fastball+pitch_count_offspeed+pitch_count_breaking)*100, z_minus_o=z_swing_percent-oz_swing_percent, s_plus_opp=straightaway_percent+opposite_percent, l_plus_f=linedrives_percent+flyballs_percent, avg_swing_length=avg_swing_length*12) %>% inner_join(statcast.id, by=c("player_id"="key_mlbam")) %>% rename(batter_name=name)
+```
+
+```{r}
+player.metrics.2024 %>% select(squared_up_contact, avg_swing_speed, avg_swing_length, swing_percent, z_swing_percent, oz_swing_percent) -> player.data
+player.metrics.2024 %>% pull(batter_name) -> ID
+
+```
+
+```{r}
+hclu1 <- hclustering(player.data)
+plot(hclu1)
+```
+
+```{r}
+#cluster1 - fast and long swings + balanced/slightly passive swing decisions, cluster 2 - very passive hitters who swing slow for squaring up, cluster 3 - passive hitters with average bat characteristics, cluster 4 - mostly average but slightly aggressive, cluster 5 - short swingers, cluster 6 - very aggressive hitters with average bat characteristics, cluster 7 - aggressive with the best swing decisions and choose to swing long and fast over squaring up
+hclu2 <- hclustering(player.data, labels=ID, k=7)
+plot(hclu2, profiles=T)
+```
+```{r}
+plot(hclu2, rect=T, colored.branches=T, cex.labels=0.5)
+```
+
