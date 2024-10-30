@@ -9,7 +9,7 @@ https://github.com/aodnoralov/Syracuse-Student-Athlete-Tutoring-Session-Analysis
 
 For R Project of MLB Stat Ratios vs Playoff Win Percentage, see the MLB Stat Ratios .Rmd file.
 
-For R Project of MLB Bat Speed and Swing Length Characteristics, see the Statcast Bat Tracking .Rmd file within the statcast bat tracking folder that also contains relevant files.
+For R Project of MLB Bat Speed and Swing Length Characteristics, see the Statcast Bat Tracking .Rmd file.
 
 For Python Project of chosen NBA Metrics vs 2023 Offseason UFA Contracts (AAV as Salary Cap Percentage), click this link:
 https://github.com/aodnoralov/NBA-Salary-Indicators 
