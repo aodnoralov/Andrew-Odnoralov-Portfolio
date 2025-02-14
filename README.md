@@ -9,6 +9,8 @@ https://github.com/aodnoralov/Syracuse-Student-Athlete-Tutoring-Session-Analysis
 
 For Sample of Full Court Analytics Visualizations Code, see **Full Court Analytics Charts.Rmd** (csv files are related to this).
 
+To view a sample visualization from data provided during my Dave Love Basketball Internship, see **Dave Love Sample Visualization.png**.
+
 For R Project of MLB Stat Ratios vs Playoff Win Percentage, see the **MLB Stat Ratios .Rmd file**.
 
 For R Project of MLB Bat Speed and Swing Length Characteristics, see the **Statcast Bat Tracking .Rmd file**.
