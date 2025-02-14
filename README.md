@@ -7,7 +7,9 @@ https://public.tableau.com/app/profile/andrew.odnoralov/vizzes
 To access code (no data CSVs) and PowerPoint of Syracuse student-athlete tutoring session analysis, click this link:
 https://github.com/aodnoralov/Syracuse-Student-Athlete-Tutoring-Session-Analysis
 
-For Sample of Full Court Analytics Visualizations Code, see **Full Court Analytics Charts.Rmd** (csv files are related to this).
+For sample of Full Court Analytics Visualizations Code, see **Full Court Analytics Charts.Rmd** (csv files are related to this).
+
+For sample of Full Court Analytics write-up on another team, see **Lockwood High Scouting Report Andrew Odnoralov** MS Word document.
 
 To view a sample visualization from data provided during my Dave Love Basketball Internship, see **Dave Love Sample Visualization.png**.
 
