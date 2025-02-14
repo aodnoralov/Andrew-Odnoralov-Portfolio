@@ -16,6 +16,6 @@ For R Project of MLB Bat Speed and Swing Length Characteristics, see the **Statc
 For Python Project of chosen NBA Metrics vs 2023 Offseason UFA Contracts (AAV as Salary Cap Percentage), click this link:
 https://github.com/aodnoralov/NBA-Salary-Indicators 
 
-Attached is also a **PowerPoint** containing additional visualizations related to cricket. 
+Attached is also a **PowerPoint** containing additional visualizations related to cricket titled **Cricket - The Baseball of the British Colonies Andrew Odnoralov**. 
 
 
