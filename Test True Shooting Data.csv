@@ -1,0 +1,21 @@
+﻿Player,Playtype,True Shooting Pct,Number of Poss
+Player1,PnR BH,0.55,13
+Player2,PnR BH,0.53,7
+Player3,PnR BH,1,2
+Player4,PnR BH,0.5,2
+Player5,PnR BH,0.5,2
+Player1,PnR Roll,0.5,2
+Player2,PnR Roll,0,2
+Player3,PnR Roll,0.5,2
+Player4,PnR Roll,0.55,8
+Player5,PnR Roll,0.57,10
+Player1,PnR Pop,0.5,2
+Player2,PnR Pop,0,2
+Player3,PnR Pop,0.5,2
+Player4,PnR Pop,0.55,5
+Player5,PnR Pop,0.68,4
+Player1,Spot Up,0.49,12
+Player2,Spot Up,0.62,15
+Player3,Spot Up,0.57,10
+Player4,Spot Up,0.45,6
+Player5,Spot Up,0.5,2
