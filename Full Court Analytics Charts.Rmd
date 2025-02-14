@@ -1,0 +1,168 @@
+---
+title: "Full Court Analytics Charts Start"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(fmsb)
+library(scales)
+library(lubridate)
+```
+
+```{r}
+playtype <- read_csv("Test True Shooting Data.csv")
+
+```
+
+```{r}
+ggplot(playtype, aes(x=Player, y=`True Shooting Pct`, size=`Number of Poss`, color=Playtype)) + geom_point() + theme(axis.text.x=element_text(angle=45, hjust=1)) + labs(title="True Shooting % by Player and PlayType", x="Player", y="True Shooting %") + scale_size_continuous(name = "Number of Possessions", range=c(0,13)) + theme_minimal() + facet_wrap(~ Playtype) +
+  theme(panel.grid.major = element_blank(),  # Remove major grid lines
+        panel.grid.minor = element_blank()   # Remove minor grid lines
+        )
+```
+```{r}
+areadive <- read_csv("FCA man vs zone sample.csv")
+
+manzone <- areadive %>% group_by(Team, Defense) %>% summarise(Points=sum(Points), Turnover=sum(Turnover), Assist=sum(Assist), Rebounds=sum(Rebounds), Blocks=sum(Blocks), Steal=sum(Steal))
+
+manzone_long <- pivot_longer(manzone, cols=c(Points, Turnover, Assist, Rebounds, Blocks, Steal), names_to="Statistic", values_to="Value")
+
+ggplot(manzone_long, aes(x=Statistic, y=Value, fill=Team, alpha=Defense)) +
+  geom_bar(stat="identity", position=position_dodge(width=0.8), width=0.7) +
+  scale_alpha_manual(values = c("Man"=1, "Zone"=0.3)) +
+  scale_fill_manual(values = c("Team1"="blue", "Team2"="orange")) +
+  labs(x="Stat", y="Value", fill="Team", alpha="Defense") +
+  theme_minimal() +
+  theme(
+    axis.text.x=element_text(angle=45, hjust=1),
+    legend.position="right",
+    panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    axis.ticks=element_blank()
+  ) + ggtitle("Counting Stats by Defense Faced")
+  
+```
+
+```{r}
+percentiles <- read_csv("percentiles.csv")
+
+create_radar <- function(data, color="#00afbb", 
+                         vlabels=colnames(data), vlcex=0.7, 
+                         caxislabels=NULL, title=NULL, ...){
+  radarchart(data, axistype=1, 
+             pcol=color, pfcol=scales::alpha(color, 0.5), plwd=2, plty=1,
+             cglcol="grey", cglty=1, cglwd=0.8,
+             axislabcol="black", 
+             vlcex=vlcex, vlabels=vlabels, 
+             caxislabels=caxislabels, title=title, ...,
+             xpd=TRUE
+             )
+}
+
+colors=c("cyan","yellow","pink","lightgreen","violet")
+titles=c("Player1","Player2","Player3","Player4","Player5")
+op <- par(mar=c(0.5, 0.5, 0.5, 0.5))  # Decrease bottom and left margins to give more space to plots
+par(mfrow=c(1, 5)) 
+
+for(i in 1:5){
+  data_to_plot <- percentiles[c(1, 2, i + 2), 2:8]
+  create_radar(
+    data=data_to_plot, caxislabels=c(0, 25, 50, 75, 100), color=colors[i], title=titles[i], vlabels=colnames(percentiles)[2:8]
+  )
+}
+par(op)
+```
+
+```{r}
+# Load necessary libraries
+library(tidyverse)
+
+# Your starting data as CSV-like input
+team_data <- read_csv("teams.csv")
+
+# Reshape the data into long format
+team_long <- team_data %>%
+  pivot_longer(cols = -Team, 
+               names_to = "Statistic", 
+               values_to = "Value")
+
+# Custom y-axis limits, make sure they match the order of the facets
+custom_y_limits <- data.frame(
+  Statistic = c("TS%","AST", "TOV", "OREB", "DREB", "FTA", "3PA","3P%"),
+  ymin = c(40, 0, 0, 0, 0, 0, 0, 10),
+  ymax = c(60, 50, 30, 35, 60, 40, 45, 40) # Adjust these values as needed
+)
+
+# Merge y-axis limits with the long-format data
+team_long <- team_long %>%
+  left_join(custom_y_limits, by = "Statistic")
+
+# Create the plot
+ggplot(team_long, aes(x = Team, y = Value, fill = Team)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.6) +  # Side-by-side bars
+  geom_text(aes(label = Value), vjust = 1.5, position = position_dodge(width = 0.9), size = 4) + # Add labels to bars
+  facet_wrap(~ Statistic, scales = "free_y") +                   # Facet by Statistic with free y-scales
+  labs(title = "Post Game Comparison",
+       x = "Team",
+       y = "Value") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),    # Tilt x-axis labels for readability
+    axis.text = element_text(size = 12),                  # Axis text size
+    axis.title = element_text(size = 14),                 # Axis title size
+    strip.text = element_text(size = 12),                 # Facet label size
+    legend.position = "none",                             # Hide legend (unnecessary with only two teams)
+    panel.grid.major=element_blank(),                     # Hide Gridlines
+    panel.grid.minor=element_blank(),
+    axis.ticks=element_blank()
+  ) +
+  scale_fill_manual(values = c("A" = "green", "B" = "red")) + # Custom colors for the teams
+    # Dynamically set y-scale limits for each facet
+  geom_blank(aes(y = ymin)) +  
+  geom_blank(aes(y = ymax))
+```
+```{r}
+lastfive <- read_csv("lastfive.csv")
+lastfive$`Last 5 Games` <- mdy(lastfive$`Last 5 Games`)
+
+lastfive_long <- lastfive %>% pivot_longer(cols = -`Last 5 Games`,
+               names_to = "Statistic",
+               values_to = "Value"
+  ) %>% 
+  group_by(Statistic) %>%
+  mutate(Change = c(NA, diff(Value)))
+
+# Define a function to handle the Y-axis transformation
+handle_y_axis_transformation <- function(statistic) {
+  if (length(statistic) > 1) {
+    stop("This function expects a single statistic")
+  }
+  
+  if (statistic == "DRtg") {
+    scale_y_continuous(trans = "reverse", labels = number_format(accuracy = 1))
+  } else {
+    scale_y_continuous(labels = number_format(accuracy = 0.1))
+  }
+}
+
+ggplot(lastfive_long, aes(x = `Last 5 Games`, y = Value, color = Statistic)) + 
+  geom_line(linewidth = 1.5) +
+  geom_point(size = 2) + # Add points to emphasize specific data points
+  facet_wrap(~ Statistic, scales = "free_y", ncol = 2) + # Create a facet for each statistic, allowing different y-axis scales
+  labs(x = "Date", y = "Value") +
+  theme_minimal() + # Use a minimal theme as a starting point
+  theme(panel.grid.major = element_blank(),  # Remove major grid lines
+        panel.grid.minor = element_blank()   # Remove minor grid lines
+        ) +
+  scale_color_brewer(palette = "Dark2") +  # Color palette for clarity
+  geom_label(aes(label = ifelse(!is.na(Change), sprintf("%.2f", Change), "")), 
+             vjust = -0.5, size = 3, color = "black", fontface = "bold", 
+             label.padding = unit(0.15, "lines")) + coord_cartesian(clip = 'off') +
+    # Apply transformation using the function
+  facet_wrap(~ Statistic, scales = "free_y", ncol = 2) + 
+  mapply(FUN = handle_y_axis_transformation, unique(lastfive_long$Statistic))  +
+  labs(x = "Date", y = "Value") +
+  ggtitle("Last 5 Games - Changes Shown in Box")
+```
+
